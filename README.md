@@ -1,10 +1,8 @@
-# Automated Traffic Report
+# Smart Traffic Report - Streamlit Edition
 
 Gen AI-powered smart traffic management system using YOLOv8 and Qwen2.5-VL for real-time traffic analysis.
 
 This application leverages the complementary strengths of two specialized AI models to provide comprehensive traffic scene understanding:
-
-**NOTE** The app should work in a localhost. However, the helm chart is WIP due to a pending fix for Gradio compatibility issue.
 
 **YOLOv8 (Object Detection)** excels at:
 - **Real-time detection** with minimal latency for immediate response
@@ -26,8 +24,11 @@ Together, these models create a robust traffic management system where YOLOv8 pr
 
 - **Object Detection**: YOLOv8 detects vehicles, pedestrians, and traffic violations
 - **Scene Analysis**: Qwen2.5-VL provides detailed traffic flow analysis and safety insights
-- **User Interface**: Gradio web interface for easy image/video upload and analysis
+- **User Interface**: Modern Streamlit web interface for easy image/video upload and analysis
 - **Real-time Processing**: Supports both static images and video analysis
+- **Tabbed Interface**: Clean organization with separate tabs for Image Analysis, Video Analysis, and Settings
+- **Session State Management**: Maintains analysis results throughout the session
+- **Responsive Design**: Wide layout with column-based organization for better user experience
 
 ## Setup
 
@@ -47,7 +48,7 @@ Together, these models create a robust traffic management system where YOLOv8 pr
    ```
    Or manually:
    ```bash
-   python app.py
+   streamlit run app.py --server.port=8080 --server.address=0.0.0.0
    ```
 
 ## Usage
@@ -59,11 +60,30 @@ Together, these models create a robust traffic management system where YOLOv8 pr
 
 **Important**: Make sure to configure the API endpoints in the Settings tab of the web interface, even if you've already set them in the `.env` file.
 
+### Streamlit Interface
+
+The application provides a clean, modern web interface with:
+
+- **Image Analysis Tab**: 
+  - File uploader for JPG, JPEG, PNG images
+  - Real-time processing with progress indicators
+  - Results display with annotated images and analysis text
+  
+- **Video Analysis Tab**:
+  - File uploader for MP4, AVI, MOV, MKV videos
+  - Frame sampling and analysis
+  - Representative frame display with comprehensive video analysis
+  
+- **Settings Tab**:
+  - API endpoint configuration for YOLO and Qwen services
+  - Password-protected API key inputs
+  - Real-time settings validation and updates
+
 ## Architecture
 
 - `detection_service.py`: YOLOv8 integration for object detection
 - `analysis_service.py`: Qwen2.5-VL integration for scene analysis
-- `app.py`: Gradio web interface
+- `app.py`: Streamlit web interface
 - `config.py`: Configuration and API settings
 
 ## API Requirements
@@ -100,26 +120,26 @@ helm-chart/
 │   ├── tests/               # Test templates
 │   └── ezua/
 │       └── virtualService.yaml  # EZUA Istio integration
-├── traffic-report-0.0.1.tar.gz  # Packaged chart
+├── traffic-report-0.1.0.tgz     # Packaged chart
 └── traffic-report.png          # Application logo
 ```
 
 ### Docker Image
 
 The application is containerized and available on Docker Hub:
-- **Repository**: `caovd/traffic-report:latest`
-- **URL**: https://hub.docker.com/r/caovd/traffic-report
+- **Repository**: `caovd/traffic-report-streamlit:latest`
+- **URL**: https://hub.docker.com/r/caovd/traffic-report-streamlit
 
 ### Quick Deployment
 
 1. **Install the Helm chart**:
    ```bash
-   helm install traffic-report ./helm-chart/
+   helm install traffic-report-streamlit ./helm-chart/
    ```
 
 2. **Or use the packaged chart**:
    ```bash
-   helm install traffic-report helm-chart/traffic-report-0.0.1.tar.gz
+   helm install traffic-report-streamlit traffic-report-0.1.0.tgz
    ```
 
 3. **Configure API endpoints** in `values.yaml`:
@@ -153,4 +173,4 @@ Key configuration options in `values.yaml`:
 The deployment includes:
 - **Liveness Probe**: Ensures container health
 - **Readiness Probe**: Confirms application readiness
-- **Health Check Endpoint**: Available at `/` (port 7860)
+- **Health Check Endpoint**: Available at `/` (port 8080)
