@@ -171,17 +171,17 @@ def process_video(video_path):
 
 def format_analysis_results(detections, analysis, yolo_valid=True, yolo_msg=""):
     """Format analysis results for display"""
-    result_text = "## Traffic Analysis Results\n\n"
+    result_text = ""
     
     # API Status Section
     if not yolo_valid:
         result_text += "### ⚠️ API Connection Status\n"
-        result_text += f"**YOLO Detection API:** ❌ Failed - {yolo_msg}\n\n"
-        result_text += "**Impact:** Unable to detect vehicles and objects in real-time.\n"
-        result_text += "**Recommendation:** Check network connectivity and API configuration in Settings tab.\n\n"
+        result_text += f"- **YOLO Detection API:** ❌ Failed - {yolo_msg}\n"
+        result_text += "- **Impact:** Unable to detect vehicles and objects in real-time\n"
+        result_text += "- **Recommendation:** Check network connectivity and API configuration in Settings tab\n\n"
     
     # Detection summary - count objects by type
-    result_text += "### Number of detected vehicles:\n"
+    result_text += "### Detected Vehicles\n"
     if detections:
         object_counts = {}
         for detection in detections:
@@ -189,7 +189,7 @@ def format_analysis_results(detections, analysis, yolo_valid=True, yolo_msg=""):
             object_counts[obj_type] = object_counts.get(obj_type, 0) + 1
         
         for obj_type, count in object_counts.items():
-            result_text += f"- {obj_type}: {count}\n"
+            result_text += f"- **{obj_type}:** {count}\n"
     else:
         if yolo_valid:
             result_text += "- No traffic objects detected in this image\n"
@@ -198,7 +198,7 @@ def format_analysis_results(detections, analysis, yolo_valid=True, yolo_msg=""):
             result_text += "- *Configure YOLO API in Settings and ensure network connectivity*\n"
     
     # Analysis results
-    result_text += "\n### AI-powered traffic report:\n"
+    result_text += "\n### AI Report\n"
     analysis_content = analysis.get('content', 'Analysis not available')
     
     # Check if analysis failed due to API issues
@@ -206,7 +206,30 @@ def format_analysis_results(detections, analysis, yolo_valid=True, yolo_msg=""):
         result_text += "⚠️ **Analysis API Status:** Connection failed\n\n"
         result_text += "**Fallback Analysis:**\n"
     
-    result_text += analysis_content
+    # Format the analysis content with proper markdown
+    if isinstance(analysis_content, str):
+        # Clean up the analysis content and ensure proper formatting
+        formatted_content = analysis_content.strip()
+        
+        # If it doesn't already have proper markdown structure, add it
+        if not formatted_content.startswith('#') and not formatted_content.startswith('-'):
+            # Split by common patterns and format as bullet points
+            lines = formatted_content.split('\n')
+            formatted_lines = []
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('-') and not line.startswith('#'):
+                    if any(keyword in line.lower() for keyword in ['status:', 'flow:', 'analysis:', 'assessment:', 'recommendations:']):
+                        formatted_lines.append(f"- **{line}**")
+                    elif line:
+                        formatted_lines.append(f"- {line}")
+                elif line:
+                    formatted_lines.append(line)
+            formatted_content = '\n'.join(formatted_lines)
+        
+        result_text += formatted_content
+    else:
+        result_text += str(analysis_content)
     
     return result_text
 
@@ -215,10 +238,10 @@ def format_video_results(results):
     if not results:
         return "No analysis results available"
     
-    result_text = "## Video Traffic Analysis Results\n\n"
+    result_text = "### Video Analysis Results\n\n"
     
     for i, result in enumerate(results, 1):
-        result_text += f"### Frame {i} (t={result['timestamp']:.1f}s)\n"
+        result_text += f"**Frame {i}** *(t={result['timestamp']:.1f}s)*\n"
         
         # Detection count
         detections = result['detections']
@@ -229,14 +252,14 @@ def format_video_results(results):
                 detection_counts[cls] = detection_counts.get(cls, 0) + 1
             
             for cls, count in detection_counts.items():
-                result_text += f"- {cls.title()}: {count}\n"
+                result_text += f"- **{cls.title()}:** {count}\n"
         else:
             result_text += "- No objects detected\n"
         
         # Analysis
         analysis = result['analysis']
-        result_text += f"- **Flow:** {analysis.get('traffic_flow', 'Unknown')}\n"
-        result_text += f"- **Safety:** {analysis.get('safety_concerns', 'OK')}\n\n"
+        result_text += f"- **Traffic Flow:** {analysis.get('traffic_flow', 'Unknown')}\n"
+        result_text += f"- **Safety Status:** {analysis.get('safety_concerns', 'OK')}\n\n"
     
     return result_text
 
@@ -334,7 +357,6 @@ def create_interface():
                     st.image(annotated_image, caption="Detection Results", use_column_width=True)
                 
                 if analysis_results:
-                    st.markdown("### Analysis Results")
                     st.markdown(analysis_results)
     
     with tab2:
@@ -378,7 +400,6 @@ def create_interface():
                     st.image(annotated_frame, caption="Sample Frame with Detections", use_column_width=True)
                 
                 if video_results:
-                    st.markdown("### Video Analysis Results")
                     st.markdown(video_results)
     
     with tab3:
