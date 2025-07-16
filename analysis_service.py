@@ -68,9 +68,32 @@ class AnalysisService:
                 "temperature": 0.7
             }
             
-            # Make request
-            response = requests.post(self.endpoint, headers=headers, json=payload)
-            response.raise_for_status()
+            # Make request with timeout and retry
+            timeout = (10, 60)  # (connection timeout, read timeout) - longer for analysis
+            max_retries = 2
+            
+            for attempt in range(max_retries):
+                try:
+                    response = requests.post(
+                        self.endpoint, 
+                        headers=headers, 
+                        json=payload,
+                        timeout=timeout
+                    )
+                    response.raise_for_status()
+                    break  # Success, exit retry loop
+                except requests.exceptions.Timeout:
+                    print(f"Analysis timeout on attempt {attempt + 1}/{max_retries}")
+                    if attempt == max_retries - 1:
+                        raise
+                except requests.exceptions.ConnectionError:
+                    print(f"Analysis connection error on attempt {attempt + 1}/{max_retries}")
+                    if attempt == max_retries - 1:
+                        raise
+                except requests.exceptions.RequestException as e:
+                    print(f"Analysis request error on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt == max_retries - 1:
+                        raise
             
             # Parse response
             result = response.json()

@@ -81,10 +81,15 @@ affinity: {}
 app:
   port: 8080
   # API Endpoints - configure these for your deployment
+  # Use KServe/Knative model endpoints via Istio Ingress Gateway
   yolo:
+    # Users will configure the full endpoint via Streamlit UI
+    # Example: https://yolo-model-predictor-namespace.ingress.cluster-dns/predict
     endpoint: "https://your-yolo-endpoint.com/predict"
     apiKey: "your-yolo-api-key-here"
   qwen:
+    # Users will configure the full endpoint via Streamlit UI  
+    # Example: https://qwen-model-predictor-namespace.ingress.cluster-dns/v1/chat/completions
     endpoint: "https://your-qwen-endpoint.com/v1/chat/completions"
     apiKey: "your-qwen-api-key-here"
 

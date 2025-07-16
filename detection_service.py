@@ -14,6 +14,22 @@ class DetectionService:
         self.endpoint = yolo_base.rstrip('/') + '/predict' if yolo_base else ""
         self.api_key = os.getenv("YOLO_API_KEY", "")
         
+    def validate_endpoint(self):
+        """Check if the endpoint is reachable"""
+        if not self.endpoint:
+            return False, "No YOLO endpoint configured"
+        
+        try:
+            # Try a simple HEAD request to check connectivity
+            response = requests.head(self.endpoint.replace('/predict', ''), timeout=5)
+            return True, "Endpoint reachable"
+        except requests.exceptions.Timeout:
+            return False, "Endpoint timeout - service may be slow or unreachable"
+        except requests.exceptions.ConnectionError:
+            return False, "Connection failed - check if endpoint URL is correct"
+        except Exception as e:
+            return False, f"Endpoint validation failed: {str(e)}"
+        
     def encode_image(self, image):
         """Convert image to base64 string"""
         if isinstance(image, str):
@@ -64,20 +80,62 @@ class DetectionService:
                 "images": ("image.jpg", img_bytes, "image/jpeg")
             }
             
-            # Make request to /predict endpoint
-            response = requests.post(self.endpoint, headers=headers, files=files)
-            response.raise_for_status()
+            # Make request to /predict endpoint with timeout and retry
+            timeout = (10, 30)  # (connection timeout, read timeout)
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    response = requests.post(
+                        self.endpoint, 
+                        headers=headers, 
+                        files=files,
+                        timeout=timeout
+                    )
+                    response.raise_for_status()
+                    break  # Success, exit retry loop
+                except requests.exceptions.Timeout:
+                    print(f"Timeout on attempt {attempt + 1}/{max_retries}")
+                    if attempt == max_retries - 1:
+                        raise
+                except requests.exceptions.ConnectionError:
+                    print(f"Connection error on attempt {attempt + 1}/{max_retries}")
+                    if attempt == max_retries - 1:
+                        raise
+                except requests.exceptions.RequestException as e:
+                    print(f"Request error on attempt {attempt + 1}/{max_retries}: {e}")
+                    if attempt == max_retries - 1:
+                        raise
             
             # Parse response
             result = response.json()
             return self.parse_detections(result)
             
-        except Exception as e:
-            print(f"Detection API error: {e}")
+        except requests.exceptions.Timeout as e:
+            print(f"Detection API timeout error: {e}")
             print(f"YOLO Endpoint: {self.endpoint}")
             print(f"API Key configured: {'Yes' if self.api_key else 'No'}")
-            
-            # Return empty results when API fails - no hardcoded fallback
+            print("Suggestion: Check if the endpoint is reachable and try increasing timeout values")
+            print("Returning empty detections - API call timed out")
+            return []
+        except requests.exceptions.ConnectionError as e:
+            print(f"Detection API connection error: {e}")
+            print(f"YOLO Endpoint: {self.endpoint}")
+            print(f"API Key configured: {'Yes' if self.api_key else 'No'}")
+            print("Suggestion: Verify the endpoint URL is correct and the service is running")
+            print("Returning empty detections - API connection failed")
+            return []
+        except requests.exceptions.HTTPError as e:
+            print(f"Detection API HTTP error: {e}")
+            print(f"YOLO Endpoint: {self.endpoint}")
+            print(f"API Key configured: {'Yes' if self.api_key else 'No'}")
+            print("Suggestion: Check API key validity and endpoint authentication")
+            print("Returning empty detections - API HTTP error")
+            return []
+        except Exception as e:
+            print(f"Detection API unexpected error: {e}")
+            print(f"YOLO Endpoint: {self.endpoint}")
+            print(f"API Key configured: {'Yes' if self.api_key else 'No'}")
             print("Returning empty detections - API call failed")
             return []
     

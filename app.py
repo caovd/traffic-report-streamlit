@@ -62,25 +62,45 @@ def process_image(image):
         else:
             pil_image = image
         
+        # Check API connectivity first
+        detector = get_detector()
+        analyzer = get_analyzer()
+        
+        # Validate endpoints
+        yolo_valid, yolo_msg = detector.validate_endpoint()
+        
         # Get detections
-        detections = get_detector().detect_objects(pil_image)
+        detections = detector.detect_objects(pil_image)
+        detection_success = len(detections) > 0 or yolo_valid
         
-        # Draw detections on image
-        annotated_image = get_detector().draw_detections(pil_image, detections)
-        
-        # Get analysis only if we have detections or if API keys are configured
-        if detections or (os.getenv("QWEN_ENDPOINT") and os.getenv("QWEN_API_KEY")):
-            analysis = get_analyzer().analyze_traffic_scene(pil_image, detections)
+        # Draw detections on image (or original if no detections)
+        if detections:
+            annotated_image = detector.draw_detections(pil_image, detections)
         else:
-            analysis = {"content": "No analysis available - configure API keys to enable AI analysis"}
+            annotated_image = pil_image
         
-        # Format results
-        results_text = format_analysis_results(detections, analysis)
+        # Get analysis
+        analysis = analyzer.analyze_traffic_scene(pil_image, detections)
+        
+        # Format results with error information
+        results_text = format_analysis_results(detections, analysis, yolo_valid, yolo_msg)
         
         return annotated_image, results_text
         
     except Exception as e:
-        return None, f"Error processing image: {str(e)}"
+        error_msg = f"""## Error Processing Image
+        
+**Error:** {str(e)}
+
+**Troubleshooting:**
+1. Check if API endpoints are reachable
+2. Verify API keys are correct
+3. Ensure network connectivity
+4. Try with a different image
+
+**Note:** The application will show the original image when processing fails.
+        """
+        return image, error_msg
 
 def process_video(video_path):
     """Process video for traffic analysis (sample frames)"""
@@ -149,9 +169,16 @@ def process_video(video_path):
     except Exception as e:
         return None, f"Error processing video: {str(e)}"
 
-def format_analysis_results(detections, analysis):
+def format_analysis_results(detections, analysis, yolo_valid=True, yolo_msg=""):
     """Format analysis results for display"""
     result_text = "## Traffic Analysis Results\n\n"
+    
+    # API Status Section
+    if not yolo_valid:
+        result_text += "### ⚠️ API Connection Status\n"
+        result_text += f"**YOLO Detection API:** ❌ Failed - {yolo_msg}\n\n"
+        result_text += "**Impact:** Unable to detect vehicles and objects in real-time.\n"
+        result_text += "**Recommendation:** Check network connectivity and API configuration in Settings tab.\n\n"
     
     # Detection summary - count objects by type
     result_text += "### Number of detected vehicles:\n"
@@ -164,12 +191,21 @@ def format_analysis_results(detections, analysis):
         for obj_type, count in object_counts.items():
             result_text += f"- {obj_type}: {count}\n"
     else:
-        result_text += "- No traffic objects detected\n"
-        result_text += "- *Note: Configure YOLO API keys in Settings to enable real-time detection*\n"
+        if yolo_valid:
+            result_text += "- No traffic objects detected in this image\n"
+        else:
+            result_text += "- ❌ Detection failed due to API connectivity issues\n"
+            result_text += "- *Configure YOLO API in Settings and ensure network connectivity*\n"
     
     # Analysis results
     result_text += "\n### AI-powered traffic report:\n"
     analysis_content = analysis.get('content', 'Analysis not available')
+    
+    # Check if analysis failed due to API issues
+    if "timeout" in str(analysis_content).lower() or "connection" in str(analysis_content).lower():
+        result_text += "⚠️ **Analysis API Status:** Connection failed\n\n"
+        result_text += "**Fallback Analysis:**\n"
+    
     result_text += analysis_content
     
     return result_text
@@ -220,6 +256,34 @@ def create_interface():
     st.title("🚦 Smart Traffic Report")
     st.markdown("Upload an image or video to analyze traffic conditions using YOLO detection and Qwen2.5-VL analysis.")
     
+    # API Status indicator
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔍 Check API Status", key="api_status_check"):
+            with st.spinner("Checking API connectivity..."):
+                try:
+                    detector = get_detector()
+                    yolo_valid, yolo_msg = detector.validate_endpoint()
+                    
+                    if yolo_valid:
+                        st.success(f"✅ YOLO API: {yolo_msg}")
+                    else:
+                        st.error(f"❌ YOLO API: {yolo_msg}")
+                        
+                    # Basic Qwen endpoint check
+                    qwen_endpoint = os.getenv("QWEN_ENDPOINT", "")
+                    if qwen_endpoint:
+                        st.info("🔄 Qwen API: Configured (will be tested during analysis)")
+                    else:
+                        st.warning("⚠️ Qwen API: Not configured")
+                        
+                except Exception as e:
+                    st.error(f"Error checking API status: {str(e)}")
+    
+    with col2:
+        if not os.getenv("YOLO_API_KEY") or not os.getenv("QWEN_API_KEY"):
+            st.warning("⚠️ Configure API keys in Settings tab for full functionality")
+    
     # Create tabs
     tab1, tab2, tab3 = st.tabs(["Image Analysis", "Video Analysis", "Settings"])
     
@@ -238,14 +302,26 @@ def create_interface():
             
             if image_input and st.button("Analyze Image", type="primary"):
                 with st.spinner("Analyzing image..."):
-                    # Convert uploaded file to PIL Image
-                    pil_image = Image.open(image_input)
-                    
-                    # Process the image
-                    annotated_image, analysis_results = process_image(pil_image)
-                    
-                    # Store results in session state
-                    st.session_state.image_results = (annotated_image, analysis_results)
+                    try:
+                        # Convert uploaded file to PIL Image
+                        pil_image = Image.open(image_input)
+                        
+                        # Process the image
+                        annotated_image, analysis_results = process_image(pil_image)
+                        
+                        # Store results in session state
+                        st.session_state.image_results = (annotated_image, analysis_results)
+                        
+                        # Show connection warnings if APIs failed
+                        if "❌ Detection failed due to API connectivity issues" in analysis_results:
+                            st.warning("⚠️ YOLO API connection failed. Check network connectivity and API configuration.")
+                        
+                        if "Connection failed" in analysis_results:
+                            st.warning("⚠️ Qwen Analysis API connection failed. Using fallback analysis.")
+                            
+                    except Exception as e:
+                        st.error(f"Error processing image: {str(e)}")
+                        st.info("Please try again or check your API configuration in the Settings tab.")
         
         with col2:
             st.subheader("Results")
@@ -355,6 +431,53 @@ def create_interface():
         st.markdown("5. **Save Settings**: Click to apply the new configuration")
         
         st.info("Settings are applied immediately and will be used for all subsequent analyses. The demo includes fallback detection data when APIs are unavailable.")
+        
+        # Troubleshooting section
+        with st.expander("🔧 Troubleshooting Connection Issues"):
+            st.markdown("### Common Connection Problems:")
+            st.markdown("""
+            **1. Timeout Errors (Errno 110):**
+            - Check if the endpoint URLs are correct and accessible
+            - Verify network connectivity from your deployment environment
+            - Consider if corporate firewall/proxy is blocking external APIs
+            - Try increasing timeout values in the code
+            
+            **2. DNS Resolution Issues:**
+            - Verify the hostname can be resolved in your network
+            - Check if you need to configure DNS servers
+            - Test connectivity with `nslookup` or `dig` commands
+            
+            **3. EZUA/Kubernetes Deployment Issues:**
+            - Check if NetworkPolicies allow external traffic
+            - Verify Istio service mesh isn't blocking requests
+            - Ensure proper proxy configuration if required
+            - Check pod logs for detailed error messages
+            
+            **4. API Authentication:**
+            - Verify API keys are correct and not expired
+            - Check if API endpoints require specific headers
+            - Ensure the API service is running and accessible
+            
+            **Testing Commands:**
+            ```bash
+            # Test endpoint connectivity
+            curl -v https://your-endpoint.com/health
+            
+            # Check DNS resolution
+            nslookup your-endpoint.com
+            
+            # Test from pod (if in Kubernetes)
+            kubectl exec -it pod-name -- curl -v https://your-endpoint.com
+            ```
+            """)
+            
+            st.markdown("### Quick Fixes:")
+            st.markdown("""
+            1. **Use the 'Check API Status' button** above to test connectivity
+            2. **Try different endpoints** if available (internal vs external)
+            3. **Check deployment logs** for network-related errors
+            4. **Contact your platform admin** for network policy adjustments
+            """)
     
     # Footer
     st.markdown("---")
